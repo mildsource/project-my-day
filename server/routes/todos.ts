@@ -8,10 +8,10 @@ const router = Router();
 router.use(authMiddleware);
 
 // Get all todos for user
-router.get('/', async (req: AuthRequest, res: Response) => {
+router.get('/', (req: AuthRequest, res: Response) => {
   try {
-    const todos = await query(
-      'SELECT * FROM todos WHERE user_id = $1 ORDER BY created_at DESC',
+    const todos = query(
+      'SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC',
       [req.userId]
     );
 
@@ -23,7 +23,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 });
 
 // Create todo
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', (req: AuthRequest, res: Response) => {
   try {
     const { title, description } = req.body;
 
@@ -31,8 +31,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Title is required' });
     }
 
-    const todo = await queryOne(
-      'INSERT INTO todos (user_id, title, description) VALUES ($1, $2, $3) RETURNING *',
+    const todo = queryOne(
+      'INSERT INTO todos (user_id, title, description) VALUES (?, ?, ?) RETURNING *',
       [req.userId, title, description || '']
     );
 
@@ -44,14 +44,14 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 });
 
 // Update todo
-router.put('/:id', async (req: AuthRequest, res: Response) => {
+router.put('/:id', (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { title, description, completed } = req.body;
 
     // Verify ownership
-    const existing = await queryOne(
-      'SELECT id FROM todos WHERE id = $1 AND user_id = $2',
+    const existing = queryOne(
+      'SELECT id FROM todos WHERE id = ? AND user_id = ?',
       [id, req.userId]
     );
 
@@ -59,15 +59,16 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Todo not found' });
     }
 
-    const todo = await queryOne(`
+    query(`
       UPDATE todos 
-      SET title = COALESCE($1, title),
-          description = COALESCE($2, description),
-          completed = COALESCE($3, completed),
+      SET title = COALESCE(?, title),
+          description = COALESCE(?, description),
+          completed = COALESCE(?, completed),
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4 AND user_id = $5
-      RETURNING *
-    `, [title, description, completed, id, req.userId]);
+      WHERE id = ? AND user_id = ?
+    `, [title, description, completed !== undefined ? (completed ? 1 : 0) : null, id, req.userId]);
+
+    const todo = queryOne('SELECT * FROM todos WHERE id = ?', [id]);
 
     res.json({ todo });
   } catch (error) {
@@ -77,13 +78,13 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // Delete todo
-router.delete('/:id', async (req: AuthRequest, res: Response) => {
+router.delete('/:id', (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
 
     // Verify ownership
-    const existing = await queryOne(
-      'SELECT id FROM todos WHERE id = $1 AND user_id = $2',
+    const existing = queryOne(
+      'SELECT id FROM todos WHERE id = ? AND user_id = ?',
       [id, req.userId]
     );
 
@@ -91,7 +92,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Todo not found' });
     }
 
-    await query('DELETE FROM todos WHERE id = $1 AND user_id = $2', [id, req.userId]);
+    query('DELETE FROM todos WHERE id = ? AND user_id = ?', [id, req.userId]);
 
     res.json({ success: true });
   } catch (error) {
