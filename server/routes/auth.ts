@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { db } from '../db/index.js';
+import { query, queryOne } from '../db/index.js';
 import { generateToken, authMiddleware, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -15,7 +15,7 @@ router.post('/register', async (req: Request, res: Response) => {
     }
 
     // Check if user exists
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const existingUser = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
@@ -24,16 +24,17 @@ router.post('/register', async (req: Request, res: Response) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Insert user
-    const result = db.prepare(
-      'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)'
-    ).run(email, passwordHash, name || '');
+    const result = await queryOne<{ id: number }>(
+      'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id',
+      [email, passwordHash, name || '']
+    );
 
-    const token = generateToken(Number(result.lastInsertRowid));
+    const token = generateToken(result!.id);
 
     res.json({
       token,
       user: {
-        id: result.lastInsertRowid,
+        id: result!.id,
         email,
         name: name || ''
       }
@@ -54,9 +55,16 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // Find user
-    const user = db.prepare(
-      'SELECT id, email, password_hash, name, avatar_url FROM users WHERE email = ?'
-    ).get(email) as { id: number; email: string; password_hash: string; name: string; avatar_url: string } | undefined;
+    const user = await queryOne<{ 
+      id: number; 
+      email: string; 
+      password_hash: string; 
+      name: string; 
+      avatar_url: string 
+    }>(
+      'SELECT id, email, password_hash, name, avatar_url FROM users WHERE email = $1',
+      [email]
+    );
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -86,11 +94,18 @@ router.post('/login', async (req: Request, res: Response) => {
 });
 
 // Get current user
-router.get('/me', authMiddleware, (req: AuthRequest, res: Response) => {
+router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const user = db.prepare(
-      'SELECT id, email, name, avatar_url, created_at FROM users WHERE id = ?'
-    ).get(req.userId) as { id: number; email: string; name: string; avatar_url: string; created_at: string } | undefined;
+    const user = await queryOne<{ 
+      id: number; 
+      email: string; 
+      name: string; 
+      avatar_url: string; 
+      created_at: string 
+    }>(
+      'SELECT id, email, name, avatar_url, created_at FROM users WHERE id = $1',
+      [req.userId]
+    );
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -104,17 +119,19 @@ router.get('/me', authMiddleware, (req: AuthRequest, res: Response) => {
 });
 
 // Update profile
-router.put('/profile', authMiddleware, (req: AuthRequest, res: Response) => {
+router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const { name, avatar_url } = req.body;
 
-    db.prepare(
-      'UPDATE users SET name = ?, avatar_url = ? WHERE id = ?'
-    ).run(name || '', avatar_url || '', req.userId);
+    await query(
+      'UPDATE users SET name = $1, avatar_url = $2 WHERE id = $3',
+      [name || '', avatar_url || '', req.userId]
+    );
 
-    const user = db.prepare(
-      'SELECT id, email, name, avatar_url FROM users WHERE id = ?'
-    ).get(req.userId);
+    const user = await queryOne(
+      'SELECT id, email, name, avatar_url FROM users WHERE id = $1',
+      [req.userId]
+    );
 
     res.json({ user });
   } catch (error) {
