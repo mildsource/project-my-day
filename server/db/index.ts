@@ -1,14 +1,12 @@
 import Database from 'better-sqlite3';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'fs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../../data/taskflow.db');
+// Use environment variable or default path
+// ⚠️ CRITICAL: Use process.cwd() - NEVER __dirname!
+const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'taskflow.db');
 
 // Ensure data directory exists
-import fs from 'fs';
 const dataDir = path.dirname(dbPath);
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
