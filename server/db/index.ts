@@ -1,35 +1,51 @@
-import Database from 'better-sqlite3';
-import path from 'path';
+import pg from 'pg';
 
-const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'app.db');
-export const db = new Database(dbPath);
+const { Pool } = pg;
 
-export function initializeDatabase() {
-  // Enable foreign keys
-  db.pragma('foreign_keys = ON');
+const connectionString = process.env.DATABASE_URL || 'postgresql://localhost:5432/taskflow';
+
+export const pool = new Pool({
+  connectionString,
+});
+
+export async function initializeDatabase() {
+  const client = await pool.connect();
   
-  // Create tables
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      name TEXT DEFAULT '',
-      avatar_url TEXT DEFAULT '',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        name TEXT DEFAULT '',
+        avatar_url TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      CREATE TABLE IF NOT EXISTS todos (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        completed BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     
-    CREATE TABLE IF NOT EXISTS todos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT DEFAULT '',
-      completed INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-  `);
-  
-  console.log('Database initialized');
+    console.log('Database initialized');
+  } finally {
+    client.release();
+  }
+}
+
+// Helper for running queries
+export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
+  const result = await pool.query(text, params);
+  return result.rows;
+}
+
+export async function queryOne<T = any>(text: string, params?: any[]): Promise<T | undefined> {
+  const rows = await query<T>(text, params);
+  return rows[0];
 }
