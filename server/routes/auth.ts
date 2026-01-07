@@ -15,7 +15,7 @@ router.post('/register', async (req: Request, res: Response) => {
     }
 
     // Check if user exists
-    const existingUser = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
+    const existingUser = queryOne('SELECT id FROM users WHERE email = ?', [email]);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
@@ -24,8 +24,8 @@ router.post('/register', async (req: Request, res: Response) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Insert user
-    const result = await queryOne<{ id: number }>(
-      'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id',
+    const result = queryOne<{ id: number }>(
+      'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?) RETURNING id',
       [email, passwordHash, name || '']
     );
 
@@ -55,14 +55,14 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // Find user
-    const user = await queryOne<{ 
+    const user = queryOne<{ 
       id: number; 
       email: string; 
       password_hash: string; 
       name: string; 
       avatar_url: string 
     }>(
-      'SELECT id, email, password_hash, name, avatar_url FROM users WHERE email = $1',
+      'SELECT id, email, password_hash, name, avatar_url FROM users WHERE email = ?',
       [email]
     );
 
@@ -94,16 +94,16 @@ router.post('/login', async (req: Request, res: Response) => {
 });
 
 // Get current user
-router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/me', authMiddleware, (req: AuthRequest, res: Response) => {
   try {
-    const user = await queryOne<{ 
+    const user = queryOne<{ 
       id: number; 
       email: string; 
       name: string; 
       avatar_url: string; 
       created_at: string 
     }>(
-      'SELECT id, email, name, avatar_url, created_at FROM users WHERE id = $1',
+      'SELECT id, email, name, avatar_url, created_at FROM users WHERE id = ?',
       [req.userId]
     );
 
@@ -119,17 +119,17 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
 });
 
 // Update profile
-router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.put('/profile', authMiddleware, (req: AuthRequest, res: Response) => {
   try {
     const { name, avatar_url } = req.body;
 
-    await query(
-      'UPDATE users SET name = $1, avatar_url = $2 WHERE id = $3',
+    query(
+      'UPDATE users SET name = ?, avatar_url = ? WHERE id = ?',
       [name || '', avatar_url || '', req.userId]
     );
 
-    const user = await queryOne(
-      'SELECT id, email, name, avatar_url FROM users WHERE id = $1',
+    const user = queryOne(
+      'SELECT id, email, name, avatar_url FROM users WHERE id = ?',
       [req.userId]
     );
 
